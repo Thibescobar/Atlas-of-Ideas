@@ -12,7 +12,9 @@ def test_v02_candidate_model_remains_compatible():
         }
     )
     assert candidate.bridge_score == 0.42
-    assert candidate.source_count == 1
+    assert candidate.concept_source_count == 1
+    assert candidate.relation_support_source_count == 0
+    assert candidate.support_level == "exploratory"
     assert candidate.cross_source is False
 
 
@@ -28,3 +30,6 @@ def test_v02_relation_model_remains_compatible():
     )
     assert relation.semantic_score == 0.51
     assert relation.bridge_score == 0.51
+    assert relation.concept_source_count == 1
+    assert relation.relation_support_source_count == 0
+    assert relation.support_level == "exploratory"

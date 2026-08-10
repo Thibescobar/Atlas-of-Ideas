@@ -12,7 +12,7 @@ Every candidate exposes:
 
 - its semantic similarity;
 - its `bridge_score`;
-- the number of supporting sources and domains;
+- the number of contextual sources versus relation-supporting sources and domains;
 - whether it is cross-source;
 - the documents, domains, and evidence passages involved.
 
@@ -21,13 +21,17 @@ The local, deterministic score is normalized from 0 to 1:
 ```text
 bridge_score =
     54% semantic similarity
-    + source diversity bonus (up to 24%)
+    + relation-support source diversity bonus (up to 30%)
     + domain diversity bonus (up to 14%)
-    + evidence quality bonus (up to 8%)
-    - trivial same-source co-occurrence penalty (12%)
+    + evidence quality bonus (up to 10%)
+    - exploratory penalty when no explicit relational evidence exists (8%)
 ```
 
-The diversity bonuses are capped. A high score means “worth inspecting across this corpus,” not “true.”
+`concept_source_count` counts documents containing either concept. It never creates a support
+bonus by itself. `relation_support_source_count` counts only documents containing a passage
+associated with both concepts. Separate passages describing A and B are context, not evidence.
+Candidates based only on semantic similarity remain visible as `exploratory`. The diversity
+bonuses are capped. A high score means “worth inspecting across this corpus,” not “true.”
 
 ## Workflow
 

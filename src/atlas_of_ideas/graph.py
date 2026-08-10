@@ -26,10 +26,15 @@ def build_graph(concepts: list[Concept], relations: list[Relation]) -> nx.Graph:
             bridge_score=relation.bridge_score,
             source_count=relation.source_count,
             domain_count=relation.domain_count,
+            concept_source_count=relation.concept_source_count,
+            relation_support_source_count=relation.relation_support_source_count,
+            relation_support_domain_count=relation.relation_support_domain_count,
+            support_level=relation.support_level,
             cross_source=relation.cross_source,
             document_ids=relation.document_ids,
             domains=relation.domains,
             rationale=relation.rationale,
+            context=[item.model_dump() for item in relation.context],
             evidence=[item.model_dump() for item in relation.evidence],
         )
 

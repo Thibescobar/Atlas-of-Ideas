@@ -24,6 +24,7 @@ RelationKind = Literal[
 ]
 
 CandidateStatus = Literal["pending", "accepted", "rejected"]
+SupportLevel = Literal["exploratory", "single_source", "multi_source"]
 
 
 def utc_now_iso() -> str:
@@ -87,16 +88,46 @@ class Relation(BaseModel):
     score: float = Field(ge=0, le=1)
     semantic_score: float | None = Field(default=None, ge=0, le=1)
     bridge_score: float | None = Field(default=None, ge=0, le=1)
-    source_count: int = Field(default=1, ge=1)
-    domain_count: int = Field(default=1, ge=1)
+    # source_count/domain_count remain as compatibility aliases for relation support.
+    source_count: int = Field(default=0, ge=0)
+    domain_count: int = Field(default=0, ge=0)
+    concept_source_count: int | None = Field(default=None, ge=0)
+    concept_domain_count: int | None = Field(default=None, ge=0)
+    relation_support_source_count: int | None = Field(default=None, ge=0)
+    relation_support_domain_count: int | None = Field(default=None, ge=0)
+    support_level: SupportLevel | None = None
     cross_source: bool = False
     document_ids: list[str] = Field(default_factory=list)
     domains: list[Domain] = Field(default_factory=list)
+    context_document_ids: list[str] = Field(default_factory=list)
+    support_document_ids: list[str] = Field(default_factory=list)
     rationale: str
+    context: list[Evidence] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     proposed_by: str = "system"
     validated_by_user: bool = False
     created_at: str = Field(default_factory=utc_now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_provenance(cls, value):
+        """Conservatively load v0.2/v0.3 provenance without inventing support."""
+        if not isinstance(value, dict) or "relation_support_source_count" in value:
+            return value
+        migrated = dict(value)
+        migrated["concept_source_count"] = migrated.get("source_count", 1)
+        migrated["concept_domain_count"] = migrated.get("domain_count", 1)
+        migrated["relation_support_source_count"] = 0
+        migrated["relation_support_domain_count"] = 0
+        migrated["support_level"] = "exploratory"
+        migrated["cross_source"] = False
+        migrated["context_document_ids"] = migrated.get("document_ids", [])
+        migrated["support_document_ids"] = []
+        migrated["context"] = migrated.get("context", migrated.get("evidence", []))
+        migrated["evidence"] = []
+        migrated["source_count"] = 0
+        migrated["domain_count"] = 0
+        return migrated
 
     @model_validator(mode="after")
     def fill_legacy_scores(self):
@@ -116,16 +147,44 @@ class CandidateRelation(BaseModel):
     suggested_kind: RelationKind = "semantic_similarity"
     semantic_score: float = Field(ge=0, le=1)
     bridge_score: float | None = Field(default=None, ge=0, le=1)
-    source_count: int = Field(default=1, ge=1)
-    domain_count: int = Field(default=1, ge=1)
+    source_count: int = Field(default=0, ge=0)
+    domain_count: int = Field(default=0, ge=0)
+    concept_source_count: int | None = Field(default=None, ge=0)
+    concept_domain_count: int | None = Field(default=None, ge=0)
+    relation_support_source_count: int | None = Field(default=None, ge=0)
+    relation_support_domain_count: int | None = Field(default=None, ge=0)
+    support_level: SupportLevel | None = None
     cross_source: bool = False
     document_ids: list[str] = Field(default_factory=list)
     domains: list[Domain] = Field(default_factory=list)
+    context_document_ids: list[str] = Field(default_factory=list)
+    support_document_ids: list[str] = Field(default_factory=list)
     rationale: str
+    context: list[Evidence] = Field(default_factory=list)
     evidence: list[Evidence] = Field(default_factory=list)
     status: CandidateStatus = "pending"
     reviewed_kind: RelationKind | None = None
     created_at: str = Field(default_factory=utc_now_iso)
+
+    @model_validator(mode="before")
+    @classmethod
+    def migrate_legacy_provenance(cls, value):
+        if not isinstance(value, dict) or "relation_support_source_count" in value:
+            return value
+        migrated = dict(value)
+        migrated["concept_source_count"] = migrated.get("source_count", 1)
+        migrated["concept_domain_count"] = migrated.get("domain_count", 1)
+        migrated["relation_support_source_count"] = 0
+        migrated["relation_support_domain_count"] = 0
+        migrated["support_level"] = "exploratory"
+        migrated["cross_source"] = False
+        migrated["context_document_ids"] = migrated.get("document_ids", [])
+        migrated["support_document_ids"] = []
+        migrated["context"] = migrated.get("context", migrated.get("evidence", []))
+        migrated["evidence"] = []
+        migrated["source_count"] = 0
+        migrated["domain_count"] = 0
+        return migrated
 
     @model_validator(mode="after")
     def fill_legacy_bridge_score(self):

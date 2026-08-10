@@ -50,10 +50,18 @@ def relation_from_candidate(candidate: CandidateRelation, workspace_id: str, kin
         bridge_score=candidate.bridge_score,
         source_count=candidate.source_count,
         domain_count=candidate.domain_count,
+        concept_source_count=candidate.concept_source_count,
+        concept_domain_count=candidate.concept_domain_count,
+        relation_support_source_count=candidate.relation_support_source_count,
+        relation_support_domain_count=candidate.relation_support_domain_count,
+        support_level=candidate.support_level,
         cross_source=candidate.cross_source,
         document_ids=candidate.document_ids,
         domains=candidate.domains,
+        context_document_ids=candidate.context_document_ids,
+        support_document_ids=candidate.support_document_ids,
         rationale=candidate.rationale,
+        context=candidate.context,
         evidence=candidate.evidence,
         proposed_by="local_candidate_generator",
         validated_by_user=True,
@@ -251,16 +259,24 @@ with bridges_tab:
         "Relations", ["Toutes", "Cross-source uniquement", "Mono-source uniquement"]
     )
     minimum_sources = source_col.selectbox(
-        "Minimum sources", [1, 2, 3, 4], format_func=lambda x: "4+" if x == 4 else str(x)
+        "Minimum sources de support",
+        [0, 1, 2, 3, 4],
+        format_func=lambda x: "0 · exploratoire inclus" if x == 0 else "4+" if x == 4 else str(x),
     )
-    sort_by = sort_col.selectbox("Trier par", ["bridge_score", "semantic_score", "source_count"])
+    sort_by = sort_col.selectbox(
+        "Trier par", ["bridge_score", "semantic_score", "relation_support_source_count"]
+    )
 
     visible = [candidate for candidate in candidates if candidate.status == "pending"]
     if relation_filter == "Cross-source uniquement":
         visible = [candidate for candidate in visible if candidate.cross_source]
     elif relation_filter == "Mono-source uniquement":
         visible = [candidate for candidate in visible if not candidate.cross_source]
-    visible = [candidate for candidate in visible if candidate.source_count >= minimum_sources]
+    visible = [
+        candidate
+        for candidate in visible
+        if (candidate.relation_support_source_count or 0) >= minimum_sources
+    ]
     visible.sort(
         key=lambda item: (getattr(item, sort_by) or 0, item.bridge_score or 0, item.id),
         reverse=True,
@@ -281,9 +297,15 @@ with bridges_tab:
             continue
         with st.container(border=True):
             st.markdown(f"### {left.label} ↔ {right.label}")
-            badge = "BRIDGE" if candidate.cross_source else "MONO-SOURCE"
+            badge = {
+                "multi_source": "BRIDGE MULTI-SOURCE",
+                "single_source": "SUPPORT MONO-SOURCE",
+                "exploratory": "EXPLORATOIRE",
+            }.get(candidate.support_level, "EXPLORATOIRE")
             st.markdown(
-                f"`{badge}` · **{candidate.source_count} sources** · **{candidate.domain_count} domaines** · "
+                f"`{badge}` · **{candidate.relation_support_source_count or 0} sources de support** · "
+                f"**{candidate.concept_source_count or 0} sources de contexte** · "
+                f"**{candidate.relation_support_domain_count or 0} domaines de support** · "
                 f"bridge score **{candidate.bridge_score:.2f}** · semantic score **{candidate.semantic_score:.2f}**"
             )
             st.caption(candidate.rationale)
@@ -293,9 +315,14 @@ with bridges_tab:
                 index=RELATION_KINDS.index(candidate.suggested_kind),
                 key=f"kind-bridge-{candidate.id}",
             )
+            for context in candidate.context:
+                with st.expander(f"CONTEXTE · {context.source_title} · {context.domain}"):
+                    st.write(context.quote)
             for evidence in candidate.evidence:
-                with st.expander(f"{evidence.source_title} · {evidence.domain}"):
+                with st.expander(f"EVIDENCE · {evidence.source_title} · {evidence.domain}"):
                     st.write(evidence.quote)
+            if not candidate.evidence:
+                st.info("Aucune evidence relationnelle explicite : cette candidate est exploratoire.")
             review_buttons(
                 candidate,
                 reviewed_kind,
@@ -316,12 +343,12 @@ with graph_tab:
         show_cross = st.checkbox("cross-source", value=True)
         show_mono = st.checkbox("mono-source", value=False)
     minimum_bridge = score_col.slider("Minimum bridge score", 0.0, 1.0, 0.0, 0.05)
-    graph_min_sources = sources_col.slider("Minimum sources", 1, 4, 1)
+    graph_min_sources = sources_col.slider("Minimum sources de support", 0, 4, 0)
     filtered_relations = [
         relation
         for relation in relations
         if (relation.bridge_score or relation.score) >= minimum_bridge
-        and relation.source_count >= graph_min_sources
+        and (relation.relation_support_source_count or 0) >= graph_min_sources
         and ((relation.cross_source and show_cross) or (not relation.cross_source and show_mono))
     ]
     graph = (
@@ -400,18 +427,33 @@ with inspect_tab:
             f"Type proposé : `{candidate.suggested_kind}`  \n"
             f"Bridge score : **{candidate.bridge_score:.2f}**  \n"
             f"Semantic score : **{candidate.semantic_score:.2f}**  \n"
+            f"Niveau de support : **{candidate.support_level}**  \n"
+            f"Sources de contexte : **{candidate.concept_source_count or 0}**  \n"
+            f"Sources de support relationnel : **{candidate.relation_support_source_count or 0}**  \n"
             f"Statut : `{candidate.status}`"
         )
-        st.markdown("#### Sources impliquées")
-        for document_id in candidate.document_ids:
+        st.markdown("#### Sources de support relationnel")
+        for document_id in candidate.support_document_ids:
             document = document_by_id.get(document_id)
             st.write(f"- {document.title if document else document_id}")
-        st.markdown("#### Domaines")
+        if not candidate.support_document_ids:
+            st.write("Aucune — candidate exploratoire.")
+        st.markdown("#### Sources de contexte conceptuel")
+        for document_id in candidate.context_document_ids:
+            document = document_by_id.get(document_id)
+            st.write(f"- {document.title if document else document_id}")
+        st.markdown("#### Domaines de support")
         st.write(", ".join(candidate.domains) or "Non renseignés (workspace v0.2)")
+        st.markdown("#### CONTEXT")
+        for context in candidate.context:
+            with st.expander(f"{context.source_title} · {context.domain}"):
+                st.write(context.quote)
         st.markdown("#### Passages / evidence")
         for evidence in candidate.evidence:
             with st.expander(f"{evidence.source_title} · {evidence.domain}"):
                 st.write(evidence.quote)
+        if not candidate.evidence:
+            st.info("Aucun passage ne soutient explicitement cette relation.")
         reviewed_kind = st.selectbox(
             "Type de relation",
             RELATION_KINDS,
