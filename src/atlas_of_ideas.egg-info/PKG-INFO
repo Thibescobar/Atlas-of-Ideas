@@ -15,6 +15,7 @@ Requires-Dist: pyvis>=0.3.2
 Provides-Extra: dev
 Requires-Dist: pytest>=8.2; extra == "dev"
 Requires-Dist: ruff>=0.5; extra == "dev"
+Dynamic: license-file
 License-Expression: PolyForm-Noncommercial-1.0.0
 License-File: LICENSE
 
