@@ -1,160 +1,116 @@
-# Atlas of Ideas — v0.2
+# Atlas of Ideas — v0.3
 
-> Build a map of what you read, what you think, and how the two connect.
+> Build a map of what you read, what you think, and how independent sources connect.
 
-Atlas of Ideas turns a user's own sources into an inspectable personal knowledge graph. The application deliberately separates **machine suggestions** from **user-validated relations**.
+Atlas of Ideas is a local Streamlit application that turns a user's PDF, TXT and Markdown sources into an inspectable knowledge graph. It extracts concepts, proposes bridges, preserves their exact evidence, and keeps every strong relationship pending until a person accepts or rejects it.
 
-## What v0.2 can do
+## Cross-source first
 
-- create multiple local workspaces;
-- upload `.pdf`, `.txt`, `.md` and `.markdown` sources;
-- extract text from text-based PDFs;
-- split documents into passages;
-- extract candidate concepts locally with TF-IDF;
-- generate candidate relations from co-occurrence and contextual similarity;
-- show evidence passages for every candidate relation;
-- let the user accept, reject, or re-type a relation;
-- persist documents, passages, concepts, candidates and validated relations as JSON;
-- visualize only the validated graph;
-- inspect where every concept and relation came from.
+Atlas v0.3 treats provenance as a fundamental graph dimension. A **bridge** is a candidate connection between two concepts, especially one supported by more than one document or domain. Cross-source candidates are ranked ahead of trivial local co-occurrences when their textual evidence is credible.
 
-## Epistemic rule
+Every candidate exposes:
 
-A model-generated connection is **not a fact**.
+- its semantic similarity;
+- its `bridge_score`;
+- the number of supporting sources and domains;
+- whether it is cross-source;
+- the documents, domains, and evidence passages involved.
 
-The pipeline is:
+The local, deterministic score is normalized from 0 to 1:
 
 ```text
-user sources
-    │
-    ▼
-text extraction
-    │
-    ▼
-passages
-    │
-    ▼
-concept extraction
-    │
-    ▼
-candidate relations
-    │
-    ▼
-USER REVIEW
-    │
-    ▼
-validated knowledge graph
+bridge_score =
+    54% semantic similarity
+    + source diversity bonus (up to 24%)
+    + domain diversity bonus (up to 14%)
+    + evidence quality bonus (up to 8%)
+    - trivial same-source co-occurrence penalty (12%)
 ```
 
-Candidate relations live in `candidates.json`. Only accepted relations are copied into `relations.json` and shown as edges in the validated graph.
+The diversity bonuses are capped. A high score means “worth inspecting across this corpus,” not “true.”
+
+## Workflow
+
+```text
+your sources → passages → local TF-IDF concepts → candidate bridges
+                                                       │
+                                                   USER REVIEW
+                                                       │
+                                             validated graph + paths
+```
+
+The five application tabs are:
+
+- **Sources** — import `.pdf`, `.txt`, `.md`, or `.markdown` files and assign a domain;
+- **Bridges** — filter by cross/mono-source and minimum sources, sort, inspect, re-type, accept, or reject;
+- **Graph** — explore an interactive, zoomable and draggable graph in Concepts or Concepts + Sources mode;
+- **Paths** — find up to five bounded simple paths between validated concepts;
+- **Inspect** — review complete provenance and the current human decision for a candidate.
 
 ## Run locally
 
-Python 3.11+ is recommended.
+Python 3.11 or newer is required.
 
 ```bash
+git clone https://github.com/Thibescobar/Atlas-of-Ideas.git
+cd Atlas-of-Ideas
+git switch v0.3-cross-source
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+python -m pip install -e ".[dev]"
 streamlit run app.py
 ```
 
-On Windows PowerShell:
+On Windows PowerShell, activate with `.venv\Scripts\Activate.ps1`.
 
-```powershell
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -e ".[dev]"
-streamlit run app.py
-```
+No API key, paid API, cloud database, or hosted service is required. Documents and graph data are stored as JSON under `data/workspaces/<workspace-id>/`.
 
-## Repository structure
+## Exploring the graph
 
-```text
-atlas-of-ideas/
-├── app.py
-├── pyproject.toml
-├── src/atlas_of_ideas/
-│   ├── models.py          # workspaces, documents, concepts, candidate + validated relations
-│   ├── ingest.py          # document chunking
-│   ├── extraction.py      # local TF-IDF concept extraction
-│   ├── candidates.py      # candidate relation discovery
-│   ├── graph.py           # NetworkX graph construction
-│   ├── storage.py         # local JSON persistence
-│   └── parsers/
-│       └── base.py        # PDF/TXT/Markdown parsing
-├── data/workspaces/       # created at runtime; one folder per workspace
-├── tests/
-└── docs/
-```
+Only accepted relations become concept-to-concept graph edges. In **Concepts + Sources** view, rectangular document nodes connect to round concept nodes, making provenance visible. Filters control cross-source versus mono-source edges, minimum bridge score, and minimum source count. Hover for details; drag nodes, zoom, or use the navigation controls.
 
-A workspace is stored roughly as:
+The Paths tab uses NetworkX over validated relations. It ranks simple paths of at most six relations and displays each edge type, score, and supporting source.
+
+## Data compatibility
+
+The v0.3 Pydantic models add provenance and scoring fields with defaults. Existing v0.2 workspace JSON remains loadable; legacy relations use their old score as both semantic and bridge score until suggestions are rebuilt. Rebuilding candidates enriches them with document and domain metadata.
+
+## Atlas discovers connections, not truths.
+
+A semantic similarity or graph path is not, by itself:
+
+- causality;
+- historical influence;
+- philosophical equivalence;
+- moral equivalence.
+
+Atlas may reveal that unrelated texts share concepts such as truth, community, authority, or belief. It must not silently convert that proximity into a historical or causal claim. Sensitive types such as `historical_influence`, `contradiction`, and `analogy` remain visible, editable proposals governed by the `pending`, `accepted`, and `rejected` human-review states.
+
+## Architecture
 
 ```text
-data/workspaces/ws-.../
-├── workspace.json
-├── documents.json
-├── passages.json
-├── concepts.json
-├── candidates.json
-└── relations.json
+app.py                         Streamlit UI and human review flow
+src/atlas_of_ideas/
+├── candidates.py             deterministic bridge discovery and scoring
+├── extraction.py             local TF-IDF concept extraction
+├── graph.py                  concept and concept+source NetworkX graphs
+├── paths.py                  bounded, ranked simple-path search
+├── visualization.py          interactive PyVis rendering
+├── models.py                 Pydantic data model and compatibility defaults
+├── ingest.py                 passage chunking
+├── storage.py                local JSON persistence
+└── parsers/                  PDF/TXT/Markdown parsing
+tests/                        synthetic corpus and regression tests
 ```
 
-## Current extraction strategy
-
-The default system intentionally has no API dependency. Concept extraction and relation discovery use transparent local TF-IDF baselines. This makes the first version cheap, inspectable and easy to debug.
-
-It is **not** meant to be the final semantic engine.
-
-## Best next upgrades
-
-### 1. Sentence embeddings
-
-Add a pluggable `SentenceTransformerEmbedder`, preferably multilingual. Keep TF-IDF as a baseline for evaluation.
-
-### 2. LLM extraction, but structured
-
-Use an LLM to propose `Concept`, `Claim`, `Person`, `Work` and typed relationships. Store the exact source passages and model/method for every proposal. Never silently promote an LLM output into a validated relation.
-
-### 3. Claims as first-class nodes
-
-Instead of directly connecting broad concepts, represent claims:
-
-```text
-[Passage] --SUPPORTS--> [Claim] --ABOUT--> [Concept]
-                         │
-                         └--CONTRADICTS--> [Claim]
-```
-
-This will make disagreement and evidence much more rigorous.
-
-### 4. Better PDF ingestion
-
-Current PDF parsing handles PDFs with embedded text. Add OCR only as an optional path for scans and preserve page numbers in `Passage` provenance.
-
-### 5. Rich graph UI
-
-Replace the basic Graphviz view with Cytoscape.js or Sigma.js for filtering, zooming, dynamic neighborhoods, evidence panels and temporal exploration.
-
-### 6. Graph analytics
-
-Add bridge-concept discovery, betweenness centrality, communities, domain mixing, temporal concept drift and a configurable `surprise_score`.
-
-### 7. Personal hypotheses
-
-Let users manually create an intuition such as:
-
-> entropy seems analogous to impermanence
-
-Then ask the system to search their corpus for supporting and contradicting evidence before they validate the edge.
-
-## Tests
+## Development
 
 ```bash
 pytest
+ruff check .
 ```
 
-The core pipeline tests do not require Streamlit.
+The extraction and scoring baseline is deliberately transparent and inexpensive. TF-IDF recognizes textual overlap, not deep multilingual meaning, irony, historical context, or the truth of a claim. Text-only PDFs are supported; scanned PDFs require OCR before import.
 
 ## License
 

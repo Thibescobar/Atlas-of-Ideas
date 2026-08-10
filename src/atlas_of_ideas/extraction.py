@@ -6,7 +6,6 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 
 from .models import Concept, Passage
 
-
 BILINGUAL_STOPWORDS = {
     "the", "and", "for", "that", "with", "from", "this", "into", "are", "was", "were",
     "have", "has", "had", "not", "but", "you", "your", "their", "they", "its", "can",

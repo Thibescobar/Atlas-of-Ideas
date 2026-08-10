@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 from typing import TypeVar
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .models import CandidateRelation, Concept, Passage, Relation, SourceDocument, Workspace
 
@@ -24,7 +24,7 @@ class WorkspaceStore:
         for path in sorted(self.root.glob("*/workspace.json")):
             try:
                 result.append(Workspace.model_validate_json(path.read_text(encoding="utf-8")))
-            except Exception:
+            except (OSError, UnicodeError, json.JSONDecodeError, ValidationError):
                 continue
         return result
 
